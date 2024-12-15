@@ -64,7 +64,19 @@
     <input type="number" id="interestRate" placeholder="이율 입력" step="0.01">
 
     <label for="startDate">가입일</label>
-    <input type="date" id="startDate">
+    <input type="date" id="startDate" onchange="updateMaturityDate()">
+
+    <label for="termMonths">가입 개월 수</label>
+    <select id="termMonths" onchange="setEndDateByTerm()">
+        <option value="">선택 안 함</option>
+        <option value="3">3개월</option>
+        <option value="6">6개월</option>
+        <option value="12">12개월</option>
+        <option value="24">24개월</option>
+        <option value="36">36개월</option>
+        <option value="48">48개월</option>
+        <option value="60">60개월</option>
+    </select>
 
     <label for="endDate">만기일</label>
     <input type="date" id="endDate" onchange="updatePaymentMaxDate()">
@@ -79,11 +91,12 @@
     <label>납입일자와 납입금</label>
     <div id="payments-container">
         <div class="payment-entry">
-            <input type="date" class="payment-date" placeholder="납입일자">
+            <input type="date" class="payment-date" onchange="validatePaymentDate(this)">
             <input type="number" class="payment-amount" placeholder="납입금액" step="1000">
         </div>
     </div>
     <button onclick="addPaymentField()">+ 납입 추가</button>
+    
 
     <button onclick="calculateInterest()">계산하기</button>
 
@@ -120,13 +133,45 @@
         </tbody>
     </table>
 
+    <h2>상세 결과</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>납입일자</th>
+                <th>납입금 (원)</th>
+                <th>세전 이자 (원)</th>
+                <th>세후 이자 (원)</th>
+            </tr>
+        </thead>
+        <tbody id="detailedResults">
+        </tbody>
+    </table>
+
     <script>
+        function updateMaturityDate() {
+            const startDate = document.getElementById('startDate').value;
+            const termMonths = document.getElementById('termMonths').value;
+
+            if (startDate && termMonths) {
+                const start = new Date(startDate);
+                start.setMonth(start.getMonth() + parseInt(termMonths));
+                document.getElementById('endDate').value = start.toISOString().split('T')[0];
+                updatePaymentMaxDate();
+            }
+        }
+
+        function setEndDateByTerm() {
+            const startDate = document.getElementById('startDate').value;
+            updateMaturityDate();
+        }
+
+
         function addPaymentField() {
             const container = document.getElementById('payments-container');
             const newEntry = document.createElement('div');
             newEntry.classList.add('payment-entry');
             newEntry.innerHTML = `
-                <input type="date" class="payment-date" placeholder="납입일자">
+                <input type="date" class="payment-date" onchange="validatePaymentDate(this)">
                 <input type="number" class="payment-amount" placeholder="납입금액" step="1000">
             `;
             container.appendChild(newEntry);
@@ -141,6 +186,15 @@
             }
         }
 
+        function validatePaymentDate(input) {
+            const endDate = new Date(document.getElementById('endDate').value);
+            const inputDate = new Date(input.value);
+            if (inputDate > endDate) {
+                alert("납입일자는 만기일 이후일 수 없습니다.");
+                input.value = ""; // 잘못된 값 초기화
+            }
+        }
+
         function calculateTaxRate(date, taxType) {
             const taxDate = new Date(date);
             if (taxType === "general") return 0.154; // 일반과세 15.4%
@@ -152,9 +206,9 @@
             return 0; // 비과세
         }
 
+
         function calculateInterest() {
             const interestRate = parseFloat(document.getElementById('interestRate').value) / 100;
-            const startDate = new Date(document.getElementById('startDate').value);
             const endDate = new Date(document.getElementById('endDate').value);
             const taxType = document.getElementById('taxType').value;
 
@@ -170,20 +224,34 @@
             let totalInterest = 0;
             let totalTax = 0;
 
+            const detailedResults = document.getElementById('detailedResults');
+            detailedResults.innerHTML = ""; // 초기화
+
             for (let i = 0; i < paymentDates.length; i++) {
                 const daysToEnd = (endDate - paymentDates[i]) / (1000 * 60 * 60 * 24);
                 if (daysToEnd > 0) {
-                    const interest = paymentAmounts[i] * (interestRate / 365) * daysToEnd;
-                    totalInterest += interest;
-
+                    const interest = Math.round(paymentAmounts[i] * (interestRate / 365) * daysToEnd);
                     const taxRate = calculateTaxRate(paymentDates[i], taxType);
-                    totalTax += interest * taxRate;
+                    const tax = Math.round(interest * taxRate);
+                    const afterTaxInterest = Math.round(interest - tax);
+
+                    totalInterest += interest;
+                    totalTax += tax;
+
+                    // 상세 결과 추가
+                    const row = `
+                        <tr>
+                            <td>${paymentDates[i].toISOString().split('T')[0]}</td>
+                            <td>${paymentAmounts[i].toLocaleString()}</td>
+                            <td>${interest.toLocaleString()}</td>
+                            <td>${afterTaxInterest.toLocaleString()}</td>
+                        </tr>
+                    `;
+                    detailedResults.innerHTML += row;
                 }
             }
 
-            totalInterest = Math.round(totalInterest);
-            totalTax = Math.round(totalTax);
-            const afterTaxInterest = Math.round(totalInterest - totalTax);
+            const afterTaxInterest = totalInterest - totalTax;
             const finalAmount = totalPrincipal + afterTaxInterest;
 
             document.getElementById('totalPrincipal').textContent = totalPrincipal.toLocaleString();
