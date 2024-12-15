@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>자유적금 이자 계산기</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: auto;
+            padding: 20px;
+        }
+        input, button, select {
+            display: block;
+            margin: 10px 0;
+            padding: 10px;
+            width: 100%;
+        }
+        button {
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .payment-entry {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .payment-entry input {
+            width: 45%;
+        }
+        #payments-container {
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            text-align: center;
+            padding: 8px;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        .warning {
+            color: red;
+            font-weight: bold;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h1>자유적금 이자 계산기</h1>
+
+    <label for="interestRate">이율 (%)</label>
+    <input type="number" id="interestRate" placeholder="이율 입력" step="0.01">
+
+    <label for="startDate">가입일</label>
+    <input type="date" id="startDate">
+
+    <label for="endDate">만기일</label>
+    <input type="date" id="endDate" onchange="updatePaymentMaxDate()">
+
+    <label for="taxType">과세 비율</label>
+    <select id="taxType">
+        <option value="general">일반과세</option>
+        <option value="preferred">세금우대</option>
+        <option value="taxFree">비과세</option>
+    </select>
+
+    <label>납입일자와 납입금</label>
+    <div id="payments-container">
+        <div class="payment-entry">
+            <input type="date" class="payment-date" placeholder="납입일자">
+            <input type="number" class="payment-amount" placeholder="납입금액" step="1000">
+        </div>
+    </div>
+    <button onclick="addPaymentField()">+ 납입 추가</button>
+
+    <button onclick="calculateInterest()">계산하기</button>
+
+    <h2>결과</h2>
+    <div id="warningMessage" class="warning"></div>
+    <table>
+        <thead>
+            <tr>
+                <th>항목</th>
+                <th>금액 (원)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>원금</td>
+                <td id="totalPrincipal"></td>
+            </tr>
+            <tr>
+                <td>세전 이자</td>
+                <td id="beforeTax"></td>
+            </tr>
+            <tr>
+                <td>세금</td>
+                <td id="taxAmount"></td>
+            </tr>
+            <tr>
+                <td>세후 이자</td>
+                <td id="afterTax"></td>
+            </tr>
+            <tr>
+                <td>수령액(세후)</td>
+                <td id="finalAmount"></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <script>
+        function addPaymentField() {
+            const container = document.getElementById('payments-container');
+            const newEntry = document.createElement('div');
+            newEntry.classList.add('payment-entry');
+            newEntry.innerHTML = `
+                <input type="date" class="payment-date" placeholder="납입일자">
+                <input type="number" class="payment-amount" placeholder="납입금액" step="1000">
+            `;
+            container.appendChild(newEntry);
+            updatePaymentMaxDate();
+        }
+
+        function updatePaymentMaxDate() {
+            const endDate = document.getElementById('endDate').value;
+            const paymentDates = document.getElementsByClassName('payment-date');
+            for (let dateInput of paymentDates) {
+                dateInput.max = endDate;
+            }
+        }
+
+        function calculateTaxRate(date, taxType) {
+            const taxDate = new Date(date);
+            if (taxType === "general") return 0.154; // 일반과세 15.4%
+            if (taxType === "preferred") {
+                if (taxDate <= new Date("2025-12-31")) return 0.014; // 세금우대 2025년 12월 31일까지
+                if (taxDate <= new Date("2026-12-31")) return 0.059; // 세금우대 2026년
+                return 0.095; // 세금우대 2027년 이후
+            }
+            return 0; // 비과세
+        }
+
+        function calculateInterest() {
+            const interestRate = parseFloat(document.getElementById('interestRate').value) / 100;
+            const startDate = new Date(document.getElementById('startDate').value);
+            const endDate = new Date(document.getElementById('endDate').value);
+            const taxType = document.getElementById('taxType').value;
+
+            const paymentDates = Array.from(document.getElementsByClassName('payment-date')).map(input => new Date(input.value));
+            const paymentAmounts = Array.from(document.getElementsByClassName('payment-amount')).map(input => parseFloat(input.value));
+
+            if (paymentDates.some(date => isNaN(date.getTime())) || paymentAmounts.some(amount => isNaN(amount))) {
+                alert("납입일자와 금액을 올바르게 입력해주세요.");
+                return;
+            }
+
+            const totalPrincipal = paymentAmounts.reduce((sum, amount) => sum + amount, 0);
+            let totalInterest = 0;
+            let totalTax = 0;
+
+            for (let i = 0; i < paymentDates.length; i++) {
+                const daysToEnd = (endDate - paymentDates[i]) / (1000 * 60 * 60 * 24);
+                if (daysToEnd > 0) {
+                    const interest = paymentAmounts[i] * (interestRate / 365) * daysToEnd;
+                    totalInterest += interest;
+
+                    const taxRate = calculateTaxRate(paymentDates[i], taxType);
+                    totalTax += interest * taxRate;
+                }
+            }
+
+            totalInterest = Math.round(totalInterest);
+            totalTax = Math.round(totalTax);
+            const afterTaxInterest = Math.round(totalInterest - totalTax);
+            const finalAmount = totalPrincipal + afterTaxInterest;
+
+            document.getElementById('totalPrincipal').textContent = totalPrincipal.toLocaleString();
+            document.getElementById('beforeTax').textContent = totalInterest.toLocaleString();
+            document.getElementById('taxAmount').textContent = totalTax.toLocaleString();
+            document.getElementById('afterTax').textContent = afterTaxInterest.toLocaleString();
+            document.getElementById('finalAmount').textContent = finalAmount.toLocaleString();
+
+            const warningMessage = document.getElementById('warningMessage');
+            if (totalInterest > 20000000) {
+                warningMessage.textContent = "세전 이자가 2,000만 원을 초과하여 금융소득세 납부 대상입니다!";
+            } else {
+                warningMessage.textContent = "";
+            }
+        }
+    </script>
+</body>
+</html>
